@@ -21,6 +21,7 @@ namespace RagnaCustoms.App
     {
         private const string RagnacInstallCommand = "ragnac://install/";
         private const string RagnacListCommand = "ragnac://list/";
+        private const string RagnacCompetitionCommand = "ragnac://competition/";
         private const string RagnacApiCommand = "ragnac://api/";
 
 
@@ -96,6 +97,47 @@ namespace RagnaCustoms.App
                         downloadingPresenter.DownloadList(songListId, configuration.AutoCloseDownload);
                         Application.Run(downloadingView);
 
+                    }
+                    else if (uri.StartsWith(RagnacCompetitionCommand, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var competitionIdText = uri.Substring(RagnacCompetitionCommand.Length).TrimEnd('/');
+                        if (!int.TryParse(competitionIdText, out var competitionId))
+                        {
+                            MessageBox.Show($"Invalid competition ID: {competitionIdText}", "RagnaCustoms",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+
+                        using var client = new HttpClient();
+                        using var response = client.GetAsync($"https://api.ragnacustoms.com/competition/{competitionId}")
+                            .GetAwaiter().GetResult();
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            MessageBox.Show($"Competition {competitionId} could not be found.", "RagnaCustoms",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+
+                        dynamic competition = Newtonsoft.Json.JsonConvert.DeserializeObject(
+                            response.Content.ReadAsStringAsync().GetAwaiter().GetResult());
+                        var songs = competition?.songs;
+                        if (songs == null || songs.Count == 0)
+                        {
+                            MessageBox.Show("This competition has no songs.", "RagnaCustoms",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            return;
+                        }
+
+                        foreach (var song in songs)
+                        {
+                            var songId = Convert.ToString(song.id);
+                            if (string.IsNullOrWhiteSpace(songId)) continue;
+                            downloadingView = new DownloadingForm();
+                            downloadingPresenter = new DownloadingPresenter(downloadingView, songProvider);
+                            downloadingPresenter.Download(songId,
+                                songs.Count < 2 || configuration.AutoCloseDownload);
+                            Application.Run(downloadingView);
+                        }
                     }
                     else if (uri.StartsWith(RagnacApiCommand))
                     {
